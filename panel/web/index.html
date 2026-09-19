@@ -333,6 +333,8 @@ function renderDraft(){
 function rmLine(i){ draftItems.splice(i,1); renderDraft(); }
 
 async function saveOrder(){
+  // Kullanici "Ekle"ye basmadan dogrudan olusturduysa, secili urunu ekle.
+  if(!draftItems.length && $('#o-product').value) addLine();
   const body = {
     customer: $('#o-customer').value.trim(),
     phone: $('#o-phone').value.trim(),
