@@ -87,6 +87,14 @@
   input:focus,textarea:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
+  /* Detay */
+  .kv{display:flex;justify-content:space-between;gap:16px;font-size:14px;padding:8px 0;border-top:1px solid var(--line)}
+  .kv:first-child{border-top:0}
+  .kv .k{color:var(--muted);white-space:nowrap}
+  .kv .v{text-align:right}
+  .sec-title{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:18px 0 4px}
+  .sec-title:first-child{margin-top:0}
+
   .lineadd{display:grid;grid-template-columns:1fr 70px auto;gap:8px;align-items:end}
   .items{margin-top:12px}
   .item{display:flex;justify-content:space-between;align-items:center;font-size:14px;
@@ -176,6 +184,18 @@
     <div class="modal-f">
       <button class="btn ghost" onclick="closeModal('order-modal')">Vazgeç</button>
       <button class="btn" onclick="saveOrder()">Siparişi Oluştur</button>
+    </div>
+  </div>
+</div>
+
+<!-- SİPARİŞ DETAY MODAL -->
+<div class="overlay" id="detail-modal">
+  <div class="modal">
+    <div class="modal-h" id="d-title">Sipariş Detayı</div>
+    <div class="modal-b" id="d-body"></div>
+    <div class="modal-f">
+      <button class="btn danger" onclick="cancelFromDetail()">Siparişi İptal Et</button>
+      <button class="btn ghost" onclick="closeModal('detail-modal')">Kapat</button>
     </div>
   </div>
 </div>
@@ -287,7 +307,7 @@ function renderOrders(){
       </div>
       <span class="pill st-${o.status}">${STATUS[o.status]}</span>
       <span class="price">${fmt(o.total)}</span>
-      <button class="btn danger sm" onclick="setStatus('${o.id}','iptal')">İptal</button>
+      <button class="btn ghost sm" onclick="openDetail('${o.id}')">Detay</button>
     </div>`;
   }).join('');
 }
@@ -295,7 +315,68 @@ function renderOrders(){
 async function setStatus(id, status){
   if(status==='iptal' && !confirm('Sipariş iptal edilsin mi?')) return;
   await api('/api/orders/'+id, {method:'PATCH', body:JSON.stringify({status})});
-  refresh();
+  await refresh();
+  if(detailId===id) renderDetail(); // detay acıksa güncel durumu göster
+}
+
+/* ---------- Sipariş Detay ---------- */
+let detailId = null;
+
+function openDetail(id){
+  detailId = id;
+  renderDetail();
+  $('#detail-modal').classList.add('show');
+}
+
+function renderDetail(){
+  const o = orders.find(x => x.id===detailId);
+  if(!o){ closeModal('detail-modal'); return; }
+  $('#d-title').innerHTML = `Sipariş <span class="badge">${o.id}</span>
+    <span class="pill st-${o.status}" style="margin-left:8px">${STATUS[o.status]}</span>`;
+
+  const itemsHtml = o.items.map(i =>
+    `<div class="item"><span>${i.qty}× ${esc(i.name)}</span>
+      <span>${fmt(i.price*i.qty)}</span></div>`).join('')
+    + `<div class="tot"><span>Toplam</span><span>${fmt(o.total)}</span></div>`;
+
+  const pipe = o.status==='iptal' ? '<div class="sub">Bu sipariş iptal edildi.</div>'
+    : `<div class="pipe">${FLOW.map(s =>
+        `<button class="${FLOW.indexOf(o.status)>=FLOW.indexOf(s)?'on':''}"
+          onclick="setStatus('${o.id}','${s}')">${STATUS[s]}</button>`).join('')}</div>`;
+
+  $('#d-body').innerHTML = `
+    <div class="sec-title">Müşteri</div>
+    <div class="kv"><span class="k">Ad Soyad</span><span class="v">${esc(o.customer)}</span></div>
+    ${o.phone?`<div class="kv"><span class="k">Telefon</span><span class="v">${esc(o.phone)}</span></div>`:''}
+    ${o.address?`<div class="kv"><span class="k">Adres</span><span class="v">${esc(o.address)}</span></div>`:''}
+
+    <div class="sec-title">Ürünler</div>
+    <div class="items" style="margin-top:0">${itemsHtml}</div>
+
+    <div class="sec-title">Durum</div>
+    ${pipe}
+
+    <div class="field" style="margin-top:18px"><label>Not</label>
+      <textarea id="d-note" rows="2" placeholder="Sipariş notu…">${esc(o.note)}</textarea></div>
+    <div style="text-align:right"><button class="btn sm" onclick="saveNote()">Notu Kaydet</button></div>
+
+    <div class="sec-title">Zaman</div>
+    <div class="kv"><span class="k">Oluşturuldu</span><span class="v">${esc(o.createdAt)}</span></div>
+    <div class="kv"><span class="k">Güncellendi</span><span class="v">${esc(o.updatedAt)}</span></div>`;
+}
+
+async function saveNote(){
+  const note = $('#d-note').value.trim();
+  await api('/api/orders/'+detailId, {method:'PATCH', body:JSON.stringify({note})});
+  await refresh();
+  renderDetail();
+}
+
+async function cancelFromDetail(){
+  if(!confirm('Sipariş iptal edilsin mi?')) return;
+  await api('/api/orders/'+detailId, {method:'PATCH', body:JSON.stringify({status:'iptal'})});
+  await refresh();
+  renderDetail();
 }
 
 function openOrderModal(){
