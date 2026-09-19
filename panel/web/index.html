@@ -23,7 +23,7 @@
   .brand{display:flex;align-items:center;gap:10px;font-weight:600;font-size:17px}
   .brand .dot{width:26px;height:26px;border-radius:8px;background:var(--accent);
     display:grid;place-items:center;color:#fff;font-size:14px}
-  nav{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);
+  nav{display:flex;flex-wrap:wrap;gap:4px;background:var(--surface);border:1px solid var(--line);
     border-radius:10px;padding:4px}
   nav button{border:0;background:transparent;color:var(--muted);font-size:14px;
     padding:7px 16px;border-radius:7px;cursor:pointer;font-weight:500;transition:.15s}
@@ -87,6 +87,14 @@
   input:focus,textarea:focus,select:focus{outline:2px solid var(--accent-soft);border-color:var(--accent)}
   .two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 
+  .checkrow{display:flex;gap:24px;margin-bottom:16px}
+  .checkrow label{display:flex;align-items:center;gap:8px;font-weight:500;margin:0;cursor:pointer}
+  .checkrow input{width:auto}
+  .costbox{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px}
+  .costbox .kv{padding:5px 0;border:0}
+  .costbox .kv.tot{border-top:2px solid var(--line);padding-top:8px;margin-top:4px;font-weight:600}
+  .profit.pos{color:#268a4f} .profit.neg{color:#c23b3b}
+
   /* Detay */
   .kv{display:flex;justify-content:space-between;gap:16px;font-size:14px;padding:8px 0;border-top:1px solid var(--line)}
   .kv:first-child{border-top:0}
@@ -117,6 +125,8 @@
     <nav>
       <button id="tab-orders" class="active" onclick="showTab('orders')">Siparişler</button>
       <button id="tab-products" onclick="showTab('products')">Ürünler</button>
+      <button id="tab-filaments" onclick="showTab('filaments')">Filamentler</button>
+      <button id="tab-settings" onclick="showTab('settings')">Ayarlar</button>
     </nav>
   </header>
 
@@ -139,6 +149,28 @@
     </div>
     <div class="card" id="products-list"></div>
   </section>
+
+  <!-- FİLAMENTLER -->
+  <section id="view-filaments" style="display:none">
+    <div class="bar">
+      <h2>Filamentler</h2>
+      <button class="btn" onclick="openFilamentModal()">+ Yeni Filament</button>
+    </div>
+    <div class="card" id="filaments-list"></div>
+  </section>
+
+  <!-- AYARLAR -->
+  <section id="view-settings" style="display:none">
+    <div class="bar"><h2>Maliyet Ayarları</h2></div>
+    <div class="card" style="padding:22px">
+      <div class="two">
+        <div class="field"><label>Ambalaj Maliyeti (₺)</label><input id="s-packaging" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Sticker Maliyeti (₺)</label><input id="s-sticker" type="number" min="0" step="0.01" placeholder="0"></div>
+      </div>
+      <div class="field"><label>Saatlik Baskı Maliyeti (₺/saat)</label><input id="s-hourly" type="number" min="0" step="0.01" placeholder="0"></div>
+      <div style="text-align:right"><button class="btn" onclick="saveSettings()">Kaydet</button></div>
+    </div>
+  </section>
 </div>
 
 <!-- ÜRÜN MODAL -->
@@ -149,15 +181,43 @@
       <input type="hidden" id="p-id">
       <div class="field"><label>Ürün Adı</label><input id="p-name" placeholder="Örn: Kedi Figürü"></div>
       <div class="two">
-        <div class="field"><label>Fiyat (₺)</label><input id="p-price" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Filament</label><select id="p-filament"></select></div>
+        <div class="field"><label>Kullanılan (gram)</label><input id="p-grams" type="number" min="0" step="0.1" placeholder="0"></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Baskı Süresi (saat)</label><input id="p-hours" type="number" min="0" step="0.1" placeholder="0"></div>
         <div class="field"><label>Stok</label><input id="p-stock" type="number" min="0" step="1" placeholder="0"></div>
       </div>
-      <div class="field"><label>Materyal</label><input id="p-material" placeholder="PLA / PETG / Reçine…"></div>
+      <div class="checkrow">
+        <label><input type="checkbox" id="p-packaging"> Ambalaj</label>
+        <label><input type="checkbox" id="p-sticker"> Sticker</label>
+      </div>
+      <div class="costbox" id="p-costbox"></div>
+      <div class="two">
+        <div class="field"><label>Satış Fiyatı (₺)</label><input id="p-price" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Kâr</label><div id="p-profit" style="padding:10px 0"></div></div>
+      </div>
       <div class="field"><label>Açıklama</label><textarea id="p-desc" rows="2" placeholder="Opsiyonel"></textarea></div>
     </div>
     <div class="modal-f">
       <button class="btn ghost" onclick="closeModal('product-modal')">Vazgeç</button>
       <button class="btn" onclick="saveProduct()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
+<!-- FİLAMENT MODAL -->
+<div class="overlay" id="filament-modal">
+  <div class="modal">
+    <div class="modal-h" id="fm-title">Yeni Filament</div>
+    <div class="modal-b">
+      <input type="hidden" id="f-id">
+      <div class="field"><label>Filament Adı</label><input id="f-name" placeholder="Örn: PLA Siyah"></div>
+      <div class="field"><label>Kilogram Fiyatı (₺/kg)</label><input id="f-price" type="number" min="0" step="0.01" placeholder="0"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" onclick="closeModal('filament-modal')">Vazgeç</button>
+      <button class="btn" onclick="saveFilament()">Kaydet</button>
     </div>
   </div>
 </div>
@@ -212,21 +272,36 @@ const fmt = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}
 const STATUS = {yeni:'Yeni', baskida:'Baskıda', kargoda:'Kargoda', teslim:'Teslim', iptal:'İptal'};
 const FLOW = ['yeni','baskida','kargoda','teslim'];
 
-let products = [], orders = [], draftItems = [];
+let products = [], orders = [], filaments = [], settings = {}, draftItems = [];
+const TABS = ['orders','products','filaments','settings'];
 
 function showTab(t){
-  $('#tab-orders').classList.toggle('active', t==='orders');
-  $('#tab-products').classList.toggle('active', t==='products');
-  $('#view-orders').style.display = t==='orders'?'block':'none';
-  $('#view-products').style.display = t==='products'?'block':'none';
+  TABS.forEach(x => {
+    $('#tab-'+x).classList.toggle('active', x===t);
+    $('#view-'+x).style.display = x===t?'block':'none';
+  });
 }
 
 async function refresh(){
-  [products, orders] = await Promise.all([api('/api/products'), api('/api/orders')]);
+  [products, orders, filaments, settings] = await Promise.all([
+    api('/api/products'), api('/api/orders'), api('/api/filaments'), api('/api/settings'),
+  ]);
   const s = await api('/api/stats');
   renderStats(s);
   renderProducts();
+  renderFilaments();
+  renderSettings();
   renderOrders();
+}
+
+/* ---------- Maliyet hesabı ---------- */
+function calcCost(p){
+  const f = filaments.find(x => x.id===p.filamentId);
+  const filamentCost = f ? (p.grams||0)/1000*f.pricePerKg : 0;
+  const printCost = (p.printHours||0)*(settings.hourlyCost||0);
+  const packaging = p.usePackaging ? (settings.packagingCost||0) : 0;
+  const sticker = p.useSticker ? (settings.stickerCost||0) : 0;
+  return {filamentCost, printCost, packaging, sticker, total: filamentCost+printCost+packaging+sticker};
 }
 
 function renderStats(s){
@@ -241,28 +316,72 @@ function renderStats(s){
 function renderProducts(){
   const el = $('#products-list');
   if(!products.length){ el.innerHTML = '<div class="empty">Henüz ürün yok. İlk ürününü ekle.</div>'; return; }
-  el.innerHTML = products.map(p => `
+  el.innerHTML = products.map(p => {
+    const c = calcCost(p);
+    const f = filaments.find(x => x.id===p.filamentId);
+    const meta = [f?esc(f.name):null, p.grams?p.grams+'g':null, p.printHours?p.printHours+'sa':null]
+      .filter(Boolean).join(' · ') || esc(p.material||'');
+    const profit = (p.price||0) - c.total;
+    return `
     <div class="row">
       <div class="grow">
         <div class="title">${esc(p.name)}</div>
-        <div class="sub">${p.material?esc(p.material)+' · ':''}${esc(p.description||'')}</div>
+        <div class="sub">${meta}${p.description?(meta?' · ':'')+esc(p.description):''}</div>
+        <div class="sub">Maliyet ${fmt(c.total)} · Kâr <span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)}</span></div>
       </div>
       <span class="badge">Stok ${p.stock}</span>
       <span class="price">${fmt(p.price)}</span>
       <button class="btn ghost sm" onclick='openProductModal(${JSON.stringify(p)})'>Düzenle</button>
       <button class="btn danger sm" onclick="delProduct('${p.id}')">Sil</button>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function openProductModal(p){
   $('#pm-title').textContent = p ? 'Ürünü Düzenle' : 'Yeni Ürün';
   $('#p-id').value = p?.id || '';
   $('#p-name').value = p?.name || '';
+  $('#p-filament').innerHTML = filaments.length
+    ? '<option value="">— Filament yok —</option>' + filaments.map(f =>
+        `<option value="${f.id}">${esc(f.name)} — ${fmt(f.pricePerKg)}/kg</option>`).join('')
+    : '<option value="">Önce filament ekleyin</option>';
+  $('#p-filament').value = p?.filamentId || '';
+  $('#p-grams').value = p?.grams ?? '';
+  $('#p-hours').value = p?.printHours ?? '';
+  $('#p-packaging').checked = !!p?.usePackaging;
+  $('#p-sticker').checked = !!p?.useSticker;
   $('#p-price').value = p?.price ?? '';
-  $('#p-stock').value = p?.stock ?? '';
-  $('#p-material').value = p?.material || '';
   $('#p-desc').value = p?.description || '';
+  updateCostBox();
   $('#product-modal').classList.add('show');
+}
+
+function productForm(){
+  return {
+    filamentId: $('#p-filament').value,
+    grams: parseFloat($('#p-grams').value)||0,
+    printHours: parseFloat($('#p-hours').value)||0,
+    usePackaging: $('#p-packaging').checked,
+    useSticker: $('#p-sticker').checked,
+  };
+}
+
+function updateCostBox(){
+  const p = productForm();
+  const c = calcCost(p);
+  const f = filaments.find(x => x.id===p.filamentId);
+  $('#p-costbox').innerHTML = `
+    <div class="kv"><span class="k">Filament${f?' ('+esc(f.name)+')':''}</span><span class="v">${fmt(c.filamentCost)}</span></div>
+    <div class="kv"><span class="k">Baskı (${p.printHours||0} sa)</span><span class="v">${fmt(c.printCost)}</span></div>
+    <div class="kv"><span class="k">Ambalaj</span><span class="v">${fmt(c.packaging)}</span></div>
+    <div class="kv"><span class="k">Sticker</span><span class="v">${fmt(c.sticker)}</span></div>
+    <div class="kv tot"><span class="k">Toplam Maliyet</span><span class="v">${fmt(c.total)}</span></div>`;
+  const price = parseFloat($('#p-price').value)||0;
+  const profit = price - c.total;
+  const pct = price>0 ? Math.round(profit/price*100) : 0;
+  $('#p-profit').innerHTML = price>0
+    ? `<span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)} <small>(%${pct})</small></span>`
+    : '<span class="sub">—</span>';
 }
 
 async function saveProduct(){
@@ -270,8 +389,8 @@ async function saveProduct(){
     name: $('#p-name').value.trim(),
     price: parseFloat($('#p-price').value)||0,
     stock: parseInt($('#p-stock').value)||0,
-    material: $('#p-material').value.trim(),
     description: $('#p-desc').value.trim(),
+    ...productForm(),
   };
   if(!body.name){ alert('Ürün adı zorunlu'); return; }
   const id = $('#p-id').value;
@@ -285,6 +404,70 @@ async function saveProduct(){
 async function delProduct(id){
   if(!confirm('Ürün silinsin mi?')) return;
   await api('/api/products/'+id, {method:'DELETE'}); refresh();
+}
+
+// Ürün modalındaki alanlar değişince maliyet/kâr canlı güncellensin.
+['p-filament','p-grams','p-hours','p-packaging','p-sticker','p-price'].forEach(id => {
+  const el = $('#'+id);
+  el.addEventListener('input', updateCostBox);
+  el.addEventListener('change', updateCostBox);
+});
+
+/* ---------- Filamentler ---------- */
+function renderFilaments(){
+  const el = $('#filaments-list');
+  if(!filaments.length){ el.innerHTML = '<div class="empty">Henüz filament yok. İlk filamentini ekle.</div>'; return; }
+  el.innerHTML = filaments.map(f => `
+    <div class="row">
+      <div class="grow"><div class="title">${esc(f.name)}</div></div>
+      <span class="price">${fmt(f.pricePerKg)}/kg</span>
+      <button class="btn ghost sm" onclick='openFilamentModal(${JSON.stringify(f)})'>Düzenle</button>
+      <button class="btn danger sm" onclick="delFilament('${f.id}')">Sil</button>
+    </div>`).join('');
+}
+
+function openFilamentModal(f){
+  $('#fm-title').textContent = f ? 'Filamenti Düzenle' : 'Yeni Filament';
+  $('#f-id').value = f?.id || '';
+  $('#f-name').value = f?.name || '';
+  $('#f-price').value = f?.pricePerKg ?? '';
+  $('#filament-modal').classList.add('show');
+}
+
+async function saveFilament(){
+  const body = { name: $('#f-name').value.trim(), pricePerKg: parseFloat($('#f-price').value)||0 };
+  if(!body.name){ alert('Filament adı zorunlu'); return; }
+  const id = $('#f-id').value;
+  try{
+    if(id) await api('/api/filaments/'+id, {method:'PUT', body:JSON.stringify(body)});
+    else await api('/api/filaments', {method:'POST', body:JSON.stringify(body)});
+    closeModal('filament-modal'); refresh();
+  }catch(e){ alert(e.message); }
+}
+
+async function delFilament(id){
+  if(!confirm('Filament silinsin mi?')) return;
+  await api('/api/filaments/'+id, {method:'DELETE'}); refresh();
+}
+
+/* ---------- Ayarlar ---------- */
+function renderSettings(){
+  $('#s-packaging').value = settings.packagingCost ?? '';
+  $('#s-sticker').value = settings.stickerCost ?? '';
+  $('#s-hourly').value = settings.hourlyCost ?? '';
+}
+
+async function saveSettings(){
+  const body = {
+    packagingCost: parseFloat($('#s-packaging').value)||0,
+    stickerCost: parseFloat($('#s-sticker').value)||0,
+    hourlyCost: parseFloat($('#s-hourly').value)||0,
+  };
+  try{
+    settings = await api('/api/settings', {method:'PUT', body:JSON.stringify(body)});
+    renderProducts(); // maliyetler yeni ayarlara göre güncellensin
+    alert('Ayarlar kaydedildi');
+  }catch(e){ alert(e.message); }
 }
 
 /* ---------- Siparişler ---------- */

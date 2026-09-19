@@ -29,11 +29,33 @@ const (
 type Product struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
-	Price       float64 `json:"price"`
+	Price       float64 `json:"price"` // satış fiyatı (elle girilir)
 	Stock       int     `json:"stock"`
-	Material    string  `json:"material"`
+	Material    string  `json:"material"` // eski alan; geriye dönük uyumluluk
 	Description string  `json:"description"`
-	CreatedAt   string  `json:"createdAt"`
+	// Maliyet için malzeme seçimleri. Maliyet, güncel filament fiyatı ve
+	// ayarlardan dinamik hesaplanır; burada seçimler saklanır.
+	FilamentID   string  `json:"filamentId"`
+	Grams        float64 `json:"grams"`      // kullanılan filament (gram)
+	PrintHours   float64 `json:"printHours"` // baskı süresi (saat)
+	UsePackaging bool    `json:"usePackaging"`
+	UseSticker   bool    `json:"useSticker"`
+	CreatedAt    string  `json:"createdAt"`
+}
+
+// Filament, üründe seçilebilen filament türü ve kg fiyatı.
+type Filament struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	PricePerKg float64 `json:"pricePerKg"`
+	CreatedAt  string  `json:"createdAt"`
+}
+
+// Settings, maliyet hesabında kullanılan global sabit kalemler.
+type Settings struct {
+	PackagingCost float64 `json:"packagingCost"` // ambalaj birim maliyeti (₺)
+	StickerCost   float64 `json:"stickerCost"`   // sticker birim maliyeti (₺)
+	HourlyCost    float64 `json:"hourlyCost"`    // saatlik baskı maliyeti (₺)
 }
 
 type OrderItem struct {
@@ -57,9 +79,11 @@ type Order struct {
 }
 
 type storeData struct {
-	Products []Product `json:"products"`
-	Orders   []Order   `json:"orders"`
-	Seq      int       `json:"seq"`
+	Products  []Product  `json:"products"`
+	Orders    []Order    `json:"orders"`
+	Filaments []Filament `json:"filaments"`
+	Settings  Settings   `json:"settings"`
+	Seq       int        `json:"seq"`
 }
 
 type Store struct {
@@ -272,6 +296,107 @@ func handleProductByID(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ---------- Filament handler'ları ----------
+
+func handleFilaments(w http.ResponseWriter, r *http.Request) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.load()
+
+	switch r.Method {
+	case http.MethodGet:
+		list := append([]Filament{}, store.data.Filaments...)
+		sort.Slice(list, func(i, j int) bool { return list[i].Name < list[j].Name })
+		writeJSON(w, http.StatusOK, list)
+
+	case http.MethodPost:
+		var f Filament
+		if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+			writeErr(w, http.StatusBadRequest, "geçersiz veri")
+			return
+		}
+		if f.Name == "" {
+			writeErr(w, http.StatusBadRequest, "filament adı zorunlu")
+			return
+		}
+		f.ID = store.nextID("FIL")
+		f.CreatedAt = now()
+		store.data.Filaments = append(store.data.Filaments, f)
+		store.save()
+		writeJSON(w, http.StatusCreated, f)
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "desteklenmeyen metot")
+	}
+}
+
+func handleFilamentByID(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.load()
+
+	idx := -1
+	for i := range store.data.Filaments {
+		if store.data.Filaments[i].ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		writeErr(w, http.StatusNotFound, "filament bulunamadı")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var f Filament
+		if err := json.NewDecoder(r.Body).Decode(&f); err != nil {
+			writeErr(w, http.StatusBadRequest, "geçersiz veri")
+			return
+		}
+		f.ID = id
+		f.CreatedAt = store.data.Filaments[idx].CreatedAt
+		store.data.Filaments[idx] = f
+		store.save()
+		writeJSON(w, http.StatusOK, f)
+
+	case http.MethodDelete:
+		store.data.Filaments = append(store.data.Filaments[:idx], store.data.Filaments[idx+1:]...)
+		store.save()
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "desteklenmeyen metot")
+	}
+}
+
+// ---------- Ayarlar handler'ı ----------
+
+func handleSettings(w http.ResponseWriter, r *http.Request) {
+	store.mu.Lock()
+	defer store.mu.Unlock()
+	store.load()
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, http.StatusOK, store.data.Settings)
+
+	case http.MethodPut:
+		var s Settings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			writeErr(w, http.StatusBadRequest, "geçersiz veri")
+			return
+		}
+		store.data.Settings = s
+		store.save()
+		writeJSON(w, http.StatusOK, s)
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "desteklenmeyen metot")
+	}
+}
+
 // ---------- Sipariş handler'ları ----------
 
 var validStatus = map[string]bool{
@@ -404,6 +529,9 @@ func Mux() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/products", handleProducts)
 	mux.HandleFunc("/api/products/{id}", handleProductByID)
+	mux.HandleFunc("/api/filaments", handleFilaments)
+	mux.HandleFunc("/api/filaments/{id}", handleFilamentByID)
+	mux.HandleFunc("/api/settings", handleSettings)
 	mux.HandleFunc("/api/orders", handleOrders)
 	mux.HandleFunc("/api/orders/{id}", handleOrderByID)
 	mux.HandleFunc("/api/stats", handleStats)
