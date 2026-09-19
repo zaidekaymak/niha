@@ -150,11 +150,34 @@ func clearSessionCookie(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// isEnvAdmin, verilen kullanıcının ortam değişkeninde tanımlı ana admin
+// olup olmadığını söyler. Kullanıcı yönetimi yalnızca bu kişiye açıktır.
+func isEnvAdmin(username string) bool {
+	u, _, ok := envAdmin()
+	return ok && username == u
+}
+
 // requireAuth, oturum gerektiren handler'ları sarar.
 func requireAuth(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if _, ok := currentUser(r); !ok {
 			writeErr(w, http.StatusUnauthorized, "oturum gerekli")
+			return
+		}
+		h(w, r)
+	}
+}
+
+// requireAdmin, yalnızca ortam değişkenindeki ana admine izin verir.
+func requireAdmin(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		u, ok := currentUser(r)
+		if !ok {
+			writeErr(w, http.StatusUnauthorized, "oturum gerekli")
+			return
+		}
+		if !isEnvAdmin(u) {
+			writeErr(w, http.StatusForbidden, "bu işlem için yetkiniz yok")
 			return
 		}
 		h(w, r)
@@ -211,7 +234,7 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func handleMe(w http.ResponseWriter, r *http.Request) {
 	if u, ok := currentUser(r); ok {
-		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": u})
+		writeJSON(w, http.StatusOK, map[string]any{"authenticated": true, "username": u, "admin": isEnvAdmin(u)})
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"authenticated": false})

@@ -542,8 +542,8 @@ func Mux() http.Handler {
 	mux.HandleFunc("/api/orders", requireAuth(handleOrders))
 	mux.HandleFunc("/api/orders/{id}", requireAuth(handleOrderByID))
 	mux.HandleFunc("/api/stats", requireAuth(handleStats))
-	mux.HandleFunc("/api/users", requireAuth(handleUsers))
-	mux.HandleFunc("/api/users/{id}", requireAuth(handleUserByID))
+	mux.HandleFunc("/api/users", requireAdmin(handleUsers))
+	mux.HandleFunc("/api/users/{id}", requireAdmin(handleUserByID))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {

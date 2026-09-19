@@ -324,6 +324,7 @@ const STATUS = {yeni:'Yeni', baskida:'Baskıda', kargoda:'Kargoda', teslim:'Tesl
 const FLOW = ['yeni','baskida','kargoda','teslim'];
 
 let products = [], orders = [], filaments = [], settings = {}, users = [], draftItems = [];
+let isAdmin = false;
 const TABS = ['orders','products','filaments','users','settings'];
 
 function showTab(t){
@@ -334,17 +335,16 @@ function showTab(t){
 }
 
 async function refresh(){
-  [products, orders, filaments, settings, users] = await Promise.all([
-    api('/api/products'), api('/api/orders'), api('/api/filaments'),
-    api('/api/settings'), api('/api/users'),
+  [products, orders, filaments, settings] = await Promise.all([
+    api('/api/products'), api('/api/orders'), api('/api/filaments'), api('/api/settings'),
   ]);
   const s = await api('/api/stats');
   renderStats(s);
   renderProducts();
   renderFilaments();
   renderSettings();
-  renderUsers();
   renderOrders();
+  if(isAdmin){ users = await api('/api/users'); renderUsers(); }
 }
 
 /* ---------- Maliyet hesabı ---------- */
@@ -564,17 +564,19 @@ function showLogin(){
   $('#login-screen').style.display='flex';
   $('#app').style.display='none';
 }
-function showApp(username){
+function showApp(username, admin){
+  isAdmin = !!admin;
   $('#login-screen').style.display='none';
   $('#app').style.display='block';
   $('#me-user').textContent = username || '';
+  $('#tab-users').style.display = isAdmin ? '' : 'none';
   refresh();
 }
 
 async function checkAuth(){
   try{
     const me = await api('/api/me');
-    if(me.authenticated) showApp(me.username);
+    if(me.authenticated) showApp(me.username, me.admin);
     else showLogin();
   }catch(e){ showLogin(); }
 }
@@ -582,10 +584,10 @@ async function checkAuth(){
 async function doLogin(){
   $('#l-error').textContent='';
   try{
-    const r = await api('/api/login', {method:'POST',
+    await api('/api/login', {method:'POST',
       body:JSON.stringify({username:$('#l-user').value.trim(), password:$('#l-pass').value})});
     $('#l-pass').value='';
-    showApp(r.username);
+    await checkAuth();
   }catch(e){ $('#l-error').textContent = e.message; }
 }
 
