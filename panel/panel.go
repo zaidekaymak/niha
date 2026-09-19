@@ -83,6 +83,7 @@ type storeData struct {
 	Orders    []Order    `json:"orders"`
 	Filaments []Filament `json:"filaments"`
 	Settings  Settings   `json:"settings"`
+	Users     []User     `json:"users"`
 	Seq       int        `json:"seq"`
 }
 
@@ -527,14 +528,22 @@ func handleStats(w http.ResponseWriter, r *http.Request) {
 // Mux, panelin tüm rotalarını içeren http.Handler döndürür.
 func Mux() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("/api/products", handleProducts)
-	mux.HandleFunc("/api/products/{id}", handleProductByID)
-	mux.HandleFunc("/api/filaments", handleFilaments)
-	mux.HandleFunc("/api/filaments/{id}", handleFilamentByID)
-	mux.HandleFunc("/api/settings", handleSettings)
-	mux.HandleFunc("/api/orders", handleOrders)
-	mux.HandleFunc("/api/orders/{id}", handleOrderByID)
-	mux.HandleFunc("/api/stats", handleStats)
+	// Kimlik doğrulama (herkese açık)
+	mux.HandleFunc("/api/login", handleLogin)
+	mux.HandleFunc("/api/logout", handleLogout)
+	mux.HandleFunc("/api/me", handleMe)
+
+	// Korunan uç noktalar (oturum gerekli)
+	mux.HandleFunc("/api/products", requireAuth(handleProducts))
+	mux.HandleFunc("/api/products/{id}", requireAuth(handleProductByID))
+	mux.HandleFunc("/api/filaments", requireAuth(handleFilaments))
+	mux.HandleFunc("/api/filaments/{id}", requireAuth(handleFilamentByID))
+	mux.HandleFunc("/api/settings", requireAuth(handleSettings))
+	mux.HandleFunc("/api/orders", requireAuth(handleOrders))
+	mux.HandleFunc("/api/orders/{id}", requireAuth(handleOrderByID))
+	mux.HandleFunc("/api/stats", requireAuth(handleStats))
+	mux.HandleFunc("/api/users", requireAuth(handleUsers))
+	mux.HandleFunc("/api/users/{id}", requireAuth(handleUserByID))
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/" {

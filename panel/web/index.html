@@ -95,6 +95,14 @@
   .costbox .kv.tot{border-top:2px solid var(--line);padding-top:8px;margin-top:4px;font-weight:600}
   .profit.pos{color:#268a4f} .profit.neg{color:#c23b3b}
 
+  /* Giriş ekranı */
+  #login-screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:var(--bg)}
+  .login-card{background:var(--surface);border:1px solid var(--line);border-radius:16px;
+    box-shadow:var(--shadow);width:100%;max-width:360px;padding:28px}
+  .login-err{color:#c23b3b;font-size:13px;min-height:18px;margin:2px 0 12px}
+  .userbox{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .userbox .me{font-size:13px;color:var(--muted)}
+
   /* Detay */
   .kv{display:flex;justify-content:space-between;gap:16px;font-size:14px;padding:8px 0;border-top:1px solid var(--line)}
   .kv:first-child{border-top:0}
@@ -119,15 +127,33 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<!-- GİRİŞ EKRANI -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="brand" style="justify-content:center;margin-bottom:22px"><span class="dot">◈</span> 3D Baskı Paneli</div>
+    <div class="field"><label>Kullanıcı Adı</label>
+      <input id="l-user" autocomplete="username" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div class="field" style="margin-bottom:6px"><label>Şifre</label>
+      <input id="l-pass" type="password" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()"></div>
+    <div id="l-error" class="login-err"></div>
+    <button class="btn" style="width:100%" onclick="doLogin()">Giriş Yap</button>
+  </div>
+</div>
+
+<div class="wrap" id="app" style="display:none">
   <header>
     <div class="brand"><span class="dot">◈</span> 3D Baskı Paneli</div>
-    <nav>
-      <button id="tab-orders" class="active" onclick="showTab('orders')">Siparişler</button>
-      <button id="tab-products" onclick="showTab('products')">Ürünler</button>
-      <button id="tab-filaments" onclick="showTab('filaments')">Filamentler</button>
-      <button id="tab-settings" onclick="showTab('settings')">Ayarlar</button>
-    </nav>
+    <div class="userbox">
+      <nav>
+        <button id="tab-orders" class="active" onclick="showTab('orders')">Siparişler</button>
+        <button id="tab-products" onclick="showTab('products')">Ürünler</button>
+        <button id="tab-filaments" onclick="showTab('filaments')">Filamentler</button>
+        <button id="tab-users" onclick="showTab('users')">Kullanıcılar</button>
+        <button id="tab-settings" onclick="showTab('settings')">Ayarlar</button>
+      </nav>
+      <span class="me" id="me-user"></span>
+      <button class="btn ghost sm" onclick="doLogout()">Çıkış</button>
+    </div>
   </header>
 
   <div class="stats" id="stats"></div>
@@ -157,6 +183,15 @@
       <button class="btn" onclick="openFilamentModal()">+ Yeni Filament</button>
     </div>
     <div class="card" id="filaments-list"></div>
+  </section>
+
+  <!-- KULLANICILAR -->
+  <section id="view-users" style="display:none">
+    <div class="bar">
+      <h2>Kullanıcılar</h2>
+      <button class="btn" onclick="openUserModal()">+ Yeni Kullanıcı</button>
+    </div>
+    <div class="card" id="users-list"></div>
   </section>
 
   <!-- AYARLAR -->
@@ -222,6 +257,21 @@
   </div>
 </div>
 
+<!-- KULLANICI MODAL -->
+<div class="overlay" id="user-modal">
+  <div class="modal">
+    <div class="modal-h">Yeni Kullanıcı</div>
+    <div class="modal-b">
+      <div class="field"><label>Kullanıcı Adı</label><input id="u-name" autocomplete="off"></div>
+      <div class="field"><label>Şifre</label><input id="u-pass" type="password" autocomplete="new-password"></div>
+    </div>
+    <div class="modal-f">
+      <button class="btn ghost" onclick="closeModal('user-modal')">Vazgeç</button>
+      <button class="btn" onclick="saveUser()">Kaydet</button>
+    </div>
+  </div>
+</div>
+
 <!-- SİPARİŞ MODAL -->
 <div class="overlay" id="order-modal">
   <div class="modal">
@@ -264,6 +314,7 @@
 const $ = s => document.querySelector(s);
 const api = async (url, opt) => {
   const r = await fetch(url, opt);
+  if (r.status === 401) showLogin();
   const d = await r.json();
   if (!r.ok) throw new Error(d.error || 'Hata');
   return d;
@@ -272,8 +323,8 @@ const fmt = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}
 const STATUS = {yeni:'Yeni', baskida:'Baskıda', kargoda:'Kargoda', teslim:'Teslim', iptal:'İptal'};
 const FLOW = ['yeni','baskida','kargoda','teslim'];
 
-let products = [], orders = [], filaments = [], settings = {}, draftItems = [];
-const TABS = ['orders','products','filaments','settings'];
+let products = [], orders = [], filaments = [], settings = {}, users = [], draftItems = [];
+const TABS = ['orders','products','filaments','users','settings'];
 
 function showTab(t){
   TABS.forEach(x => {
@@ -283,14 +334,16 @@ function showTab(t){
 }
 
 async function refresh(){
-  [products, orders, filaments, settings] = await Promise.all([
-    api('/api/products'), api('/api/orders'), api('/api/filaments'), api('/api/settings'),
+  [products, orders, filaments, settings, users] = await Promise.all([
+    api('/api/products'), api('/api/orders'), api('/api/filaments'),
+    api('/api/settings'), api('/api/users'),
   ]);
   const s = await api('/api/stats');
   renderStats(s);
   renderProducts();
   renderFilaments();
   renderSettings();
+  renderUsers();
   renderOrders();
 }
 
@@ -470,6 +523,77 @@ async function saveSettings(){
   }catch(e){ alert(e.message); }
 }
 
+/* ---------- Kullanıcılar ---------- */
+function renderUsers(){
+  const el = $('#users-list');
+  if(!users.length){
+    el.innerHTML = '<div class="empty">Panelden eklenmiş kullanıcı yok. Ana admin ortam değişkeninde tanımlı.</div>';
+    return;
+  }
+  el.innerHTML = users.map(u => `
+    <div class="row">
+      <div class="grow"><div class="title">${esc(u.username)}</div>
+        <div class="sub">${esc(u.createdAt||'')}</div></div>
+      <button class="btn danger sm" onclick="delUser('${u.id}')">Sil</button>
+    </div>`).join('');
+}
+
+function openUserModal(){
+  $('#u-name').value=''; $('#u-pass').value='';
+  $('#user-modal').classList.add('show');
+}
+
+async function saveUser(){
+  const body = { username: $('#u-name').value.trim(), password: $('#u-pass').value };
+  if(!body.username || !body.password){ alert('Kullanıcı adı ve şifre zorunlu'); return; }
+  try{
+    await api('/api/users', {method:'POST', body:JSON.stringify(body)});
+    closeModal('user-modal');
+    users = await api('/api/users'); renderUsers();
+  }catch(e){ alert(e.message); }
+}
+
+async function delUser(id){
+  if(!confirm('Kullanıcı silinsin mi?')) return;
+  await api('/api/users/'+id, {method:'DELETE'});
+  users = await api('/api/users'); renderUsers();
+}
+
+/* ---------- Oturum ---------- */
+function showLogin(){
+  $('#login-screen').style.display='flex';
+  $('#app').style.display='none';
+}
+function showApp(username){
+  $('#login-screen').style.display='none';
+  $('#app').style.display='block';
+  $('#me-user').textContent = username || '';
+  refresh();
+}
+
+async function checkAuth(){
+  try{
+    const me = await api('/api/me');
+    if(me.authenticated) showApp(me.username);
+    else showLogin();
+  }catch(e){ showLogin(); }
+}
+
+async function doLogin(){
+  $('#l-error').textContent='';
+  try{
+    const r = await api('/api/login', {method:'POST',
+      body:JSON.stringify({username:$('#l-user').value.trim(), password:$('#l-pass').value})});
+    $('#l-pass').value='';
+    showApp(r.username);
+  }catch(e){ $('#l-error').textContent = e.message; }
+}
+
+async function doLogout(){
+  try{ await api('/api/logout', {method:'POST'}); }catch(e){}
+  showLogin();
+}
+
 /* ---------- Siparişler ---------- */
 function renderOrders(){
   const el = $('#orders-list');
@@ -620,7 +744,7 @@ function esc(s){ return (s||'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','
 document.querySelectorAll('.overlay').forEach(o =>
   o.addEventListener('click', e => { if(e.target===o) o.classList.remove('show'); }));
 
-refresh();
+checkAuth();
 </script>
 </body>
 </html>
