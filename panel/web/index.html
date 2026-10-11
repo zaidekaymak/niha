@@ -391,13 +391,14 @@ function renderProducts(){
     const meta = [f?esc(f.name):null, p.grams?p.grams+'g':null, p.printHours?p.printHours+'sa':null]
       .filter(Boolean).join(' · ') || esc(p.material||'');
     const profit = (p.price||0) - c.total;
+    const pct = p.price>0 ? ` <small>(%${Math.round(profit/p.price*100)})</small>` : '';
     return `
     <div class="row">
       ${p.photoVer ? `<img class="thumb" src="${photoURL(p)}" alt="" loading="lazy">` : '<div class="thumb">▢</div>'}
       <div class="grow">
         <div class="title">${esc(p.name)}</div>
         <div class="sub">${meta}${p.description?(meta?' · ':'')+esc(p.description):''}</div>
-        <div class="sub">Maliyet ${fmt(c.total)} · Kâr <span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)}</span></div>
+        <div class="sub">Maliyet ${fmt(c.total)} · Kâr <span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)}${pct}</span></div>
       </div>
       <span class="badge">Stok ${p.stock}</span>
       <span class="price">${fmt(p.price)}</span>
@@ -417,6 +418,7 @@ function openProductModal(p){
     : '<option value="">Önce filament ekleyin</option>';
   $('#p-filament').value = p?.filamentId || '';
   $('#p-grams').value = p?.grams ?? '';
+  $('#p-stock').value = p?.stock ?? '';
   $('#p-hours').value = p?.printHours ?? '';
   $('#p-packaging').checked = !!p?.usePackaging;
   $('#p-sticker').checked = !!p?.useSticker;
