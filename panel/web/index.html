@@ -260,10 +260,11 @@
 <!-- KULLANICI MODAL -->
 <div class="overlay" id="user-modal">
   <div class="modal">
-    <div class="modal-h">Yeni Kullanıcı</div>
+    <div class="modal-h" id="um-title">Yeni Kullanıcı</div>
     <div class="modal-b">
+      <input id="u-id" type="hidden">
       <div class="field"><label>Kullanıcı Adı</label><input id="u-name" autocomplete="off"></div>
-      <div class="field"><label>Şifre</label><input id="u-pass" type="password" autocomplete="new-password"></div>
+      <div class="field"><label>Şifre</label><input id="u-pass" type="text" autocomplete="off"></div>
     </div>
     <div class="modal-f">
       <button class="btn ghost" onclick="closeModal('user-modal')">Vazgeç</button>
@@ -533,21 +534,28 @@ function renderUsers(){
   el.innerHTML = users.map(u => `
     <div class="row">
       <div class="grow"><div class="title">${esc(u.username)}</div>
+        <div class="sub">Şifre: ${u.password ? esc(u.password) : '<i>bilinmiyor — düzenleyip yeni şifre verin</i>'}</div>
         <div class="sub">${esc(u.createdAt||'')}</div></div>
+      <button class="btn ghost sm" onclick='openUserModal(${JSON.stringify(u).replace(/'/g,"&#39;")})'>Düzenle</button>
       <button class="btn danger sm" onclick="delUser('${u.id}')">Sil</button>
     </div>`).join('');
 }
 
-function openUserModal(){
-  $('#u-name').value=''; $('#u-pass').value='';
+function openUserModal(u){
+  $('#um-title').textContent = u ? 'Kullanıcıyı Düzenle' : 'Yeni Kullanıcı';
+  $('#u-id').value = u?.id || '';
+  $('#u-name').value = u?.username || '';
+  $('#u-pass').value = u?.password || '';
+  $('#u-pass').placeholder = u ? 'Boş bırakılırsa şifre değişmez' : '';
   $('#user-modal').classList.add('show');
 }
 
 async function saveUser(){
+  const id = $('#u-id').value;
   const body = { username: $('#u-name').value.trim(), password: $('#u-pass').value };
-  if(!body.username || !body.password){ alert('Kullanıcı adı ve şifre zorunlu'); return; }
+  if(!body.username || (!id && !body.password)){ alert('Kullanıcı adı ve şifre zorunlu'); return; }
   try{
-    await api('/api/users', {method:'POST', body:JSON.stringify(body)});
+    await api(id ? '/api/users/'+id : '/api/users', {method: id ? 'PUT' : 'POST', body:JSON.stringify(body)});
     closeModal('user-modal');
     users = await api('/api/users'); renderUsers();
   }catch(e){ alert(e.message); }

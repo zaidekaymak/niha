@@ -3,6 +3,8 @@
 package panel
 
 import (
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
@@ -30,6 +32,7 @@ type User struct {
 	Username     string `json:"username"`
 	PasswordHash string `json:"passwordHash"`
 	PasswordSalt string `json:"passwordSalt"`
+	PasswordEnc  string `json:"passwordEnc,omitempty"`
 	CreatedAt    string `json:"createdAt"`
 }
 
@@ -73,6 +76,56 @@ func hashPassword(pw, salt string) string {
 
 func checkPassword(pw, salt, hash string) bool {
 	return subtle.ConstantTimeCompare([]byte(hashPassword(pw, salt)), []byte(hash)) == 1
+}
+
+// passwordGCM, SESSION_SECRET'tan türetilen anahtarla AES-GCM şifreleyici döndürür.
+func passwordGCM() cipher.AEAD {
+	key := sha256.Sum256(append([]byte("niha-pw-enc|"), sessionSecret()...))
+	block, _ := aes.NewCipher(key[:])
+	gcm, _ := cipher.NewGCM(block)
+	return gcm
+}
+
+// encryptPassword, şifreyi adminin görebilmesi için geri çözülebilir biçimde şifreler.
+func encryptPassword(pw string) string {
+	gcm := passwordGCM()
+	nonce := make([]byte, gcm.NonceSize())
+	rand.Read(nonce)
+	return base64.StdEncoding.EncodeToString(gcm.Seal(nonce, nonce, []byte(pw), nil))
+}
+
+// decryptPassword, şifreli şifreyi çözer; çözülemezse boş döner.
+func decryptPassword(enc string) string {
+	data, err := base64.StdEncoding.DecodeString(enc)
+	gcm := passwordGCM()
+	if enc == "" || err != nil || len(data) < gcm.NonceSize() {
+		return ""
+	}
+	pw, err := gcm.Open(nil, data[:gcm.NonceSize()], data[gcm.NonceSize():], nil)
+	if err != nil {
+		return ""
+	}
+	return string(pw)
+}
+
+// setPassword, kullanıcının hash'ini ve adminin göreceği şifreli kopyasını günceller.
+func (u *User) setPassword(pw string) {
+	u.PasswordSalt = newSalt()
+	u.PasswordHash = hashPassword(pw, u.PasswordSalt)
+	u.PasswordEnc = encryptPassword(pw)
+}
+
+// usernameTaken, adın ana adminde ya da (exceptID dışındaki) başka bir kullanıcıda olup olmadığını söyler.
+func usernameTaken(name, exceptID string) bool {
+	if isEnvAdmin(name) {
+		return true
+	}
+	for _, u := range store.data.Users {
+		if u.Username == name && u.ID != exceptID {
+			return true
+		}
+	}
+	return false
 }
 
 // ---------- Oturum jetonu ----------
@@ -249,14 +302,15 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodGet:
-		type safeUser struct {
+		type userView struct {
 			ID        string `json:"id"`
 			Username  string `json:"username"`
+			Password  string `json:"password"`
 			CreatedAt string `json:"createdAt"`
 		}
-		list := []safeUser{}
+		list := []userView{}
 		for _, u := range store.data.Users {
-			list = append(list, safeUser{u.ID, u.Username, u.CreatedAt})
+			list = append(list, userView{u.ID, u.Username, decryptPassword(u.PasswordEnc), u.CreatedAt})
 		}
 		writeJSON(w, http.StatusOK, list)
 
@@ -274,20 +328,12 @@ func handleUsers(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "kullanıcı adı ve şifre zorunlu")
 			return
 		}
-		for _, u := range store.data.Users {
-			if u.Username == body.Username {
-				writeErr(w, http.StatusBadRequest, "bu kullanıcı adı zaten var")
-				return
-			}
+		if usernameTaken(body.Username, "") {
+			writeErr(w, http.StatusBadRequest, "bu kullanıcı adı zaten var")
+			return
 		}
-		salt := newSalt()
-		u := User{
-			ID:           store.nextID("USR"),
-			Username:     body.Username,
-			PasswordSalt: salt,
-			PasswordHash: hashPassword(body.Password, salt),
-			CreatedAt:    now(),
-		}
+		u := User{ID: store.nextID("USR"), Username: body.Username, CreatedAt: now()}
+		u.setPassword(body.Password)
 		store.data.Users = append(store.data.Users, u)
 		store.save()
 		writeJSON(w, http.StatusCreated, map[string]string{"id": u.ID, "username": u.Username})
@@ -302,13 +348,53 @@ func handleUserByID(w http.ResponseWriter, r *http.Request) {
 	store.mu.Lock()
 	defer store.mu.Unlock()
 	store.load()
+
+	idx := -1
 	for i := range store.data.Users {
 		if store.data.Users[i].ID == id {
-			store.data.Users = append(store.data.Users[:i], store.data.Users[i+1:]...)
-			store.save()
-			writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
-			return
+			idx = i
+			break
 		}
 	}
-	writeErr(w, http.StatusNotFound, "kullanıcı bulunamadı")
+	if idx < 0 {
+		writeErr(w, http.StatusNotFound, "kullanıcı bulunamadı")
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		// Şifre boş gelirse mevcut şifre korunur.
+		var body struct {
+			Username string `json:"username"`
+			Password string `json:"password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			writeErr(w, http.StatusBadRequest, "geçersiz veri")
+			return
+		}
+		body.Username = strings.TrimSpace(body.Username)
+		if body.Username == "" {
+			writeErr(w, http.StatusBadRequest, "kullanıcı adı zorunlu")
+			return
+		}
+		if usernameTaken(body.Username, id) {
+			writeErr(w, http.StatusBadRequest, "bu kullanıcı adı zaten var")
+			return
+		}
+		u := &store.data.Users[idx]
+		u.Username = body.Username
+		if body.Password != "" {
+			u.setPassword(body.Password)
+		}
+		store.save()
+		writeJSON(w, http.StatusOK, map[string]string{"id": u.ID, "username": u.Username})
+
+	case http.MethodDelete:
+		store.data.Users = append(store.data.Users[:idx], store.data.Users[idx+1:]...)
+		store.save()
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+
+	default:
+		writeErr(w, http.StatusMethodNotAllowed, "desteklenmeyen metot")
+	}
 }
