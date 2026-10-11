@@ -51,6 +51,11 @@
   .row .grow{flex:1;min-width:0}
   .row .title{font-weight:500}
   .row .sub{font-size:13px;color:var(--muted)}
+  .thumb{width:52px;height:52px;flex:none;border-radius:10px;object-fit:cover;
+    background:var(--bg);border:1px solid var(--line);display:flex;align-items:center;
+    justify-content:center;color:var(--muted);font-size:20px}
+  .photo-edit{display:flex;align-items:center;gap:14px}
+  .photo-edit .thumb{width:84px;height:84px}
   .price{font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
   .empty{padding:48px;text-align:center;color:var(--muted)}
 
@@ -215,6 +220,16 @@
     <div class="modal-b">
       <input type="hidden" id="p-id">
       <div class="field"><label>Ürün Adı</label><input id="p-name" placeholder="Örn: Kedi Figürü"></div>
+      <div class="field"><label>Fotoğraf</label>
+        <div class="photo-edit">
+          <div id="p-photo-preview"></div>
+          <div>
+            <input id="p-photo" type="file" accept="image/*" style="display:none" onchange="pickPhoto(this.files[0])">
+            <button class="btn ghost sm" type="button" onclick="$('#p-photo').click()">Fotoğraf Seç</button>
+            <button class="btn danger sm" type="button" id="p-photo-remove" onclick="removePhoto()">Kaldır</button>
+          </div>
+        </div>
+      </div>
       <div class="two">
         <div class="field"><label>Filament</label><select id="p-filament"></select></div>
         <div class="field"><label>Kullanılan (gram)</label><input id="p-grams" type="number" min="0" step="0.1" placeholder="0"></div>
@@ -378,6 +393,7 @@ function renderProducts(){
     const profit = (p.price||0) - c.total;
     return `
     <div class="row">
+      ${p.photoVer ? `<img class="thumb" src="${photoURL(p)}" alt="" loading="lazy">` : '<div class="thumb">▢</div>'}
       <div class="grow">
         <div class="title">${esc(p.name)}</div>
         <div class="sub">${meta}${p.description?(meta?' · ':'')+esc(p.description):''}</div>
@@ -406,6 +422,9 @@ function openProductModal(p){
   $('#p-sticker').checked = !!p?.useSticker;
   $('#p-price').value = p?.price ?? '';
   $('#p-desc').value = p?.description || '';
+  photoDraft = { changed:false, dataUrl:null, current: p?.photoVer ? photoURL(p) : null };
+  $('#p-photo').value = '';
+  renderPhotoPreview();
   updateCostBox();
   $('#product-modal').classList.add('show');
 }
@@ -447,12 +466,49 @@ async function saveProduct(){
     ...productForm(),
   };
   if(!body.name){ alert('Ürün adı zorunlu'); return; }
-  const id = $('#p-id').value;
+  let id = $('#p-id').value;
   try{
     if(id) await api('/api/products/'+id, {method:'PUT', body:JSON.stringify(body)});
-    else await api('/api/products', {method:'POST', body:JSON.stringify(body)});
+    else id = (await api('/api/products', {method:'POST', body:JSON.stringify(body)})).id;
+    if(photoDraft.changed){
+      if(photoDraft.dataUrl) await api('/api/products/'+id+'/photo', {method:'PUT', body:JSON.stringify({photo:photoDraft.dataUrl})});
+      else if(photoDraft.current) await api('/api/products/'+id+'/photo', {method:'DELETE'});
+    }
     closeModal('product-modal'); refresh();
   }catch(e){ alert(e.message); }
+}
+
+/* ---------- Ürün fotoğrafı ---------- */
+let photoDraft = { changed:false, dataUrl:null, current:null };
+const photoURL = p => '/api/products/'+p.id+'/photo?v='+p.photoVer;
+
+function renderPhotoPreview(){
+  const src = photoDraft.changed ? photoDraft.dataUrl : photoDraft.current;
+  $('#p-photo-preview').innerHTML = src ? `<img class="thumb" src="${src}" alt="">` : '<div class="thumb">▢</div>';
+  $('#p-photo-remove').style.display = src ? '' : 'none';
+}
+
+// Seçilen fotoğraf yüklemeden önce en fazla 1000px JPEG'e küçültülür.
+function pickPhoto(file){
+  if(!file) return;
+  const img = new Image();
+  img.onload = () => {
+    const scale = Math.min(1, 1000/Math.max(img.width, img.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    URL.revokeObjectURL(img.src);
+    photoDraft.changed = true; photoDraft.dataUrl = c.toDataURL('image/jpeg', 0.85);
+    renderPhotoPreview();
+  };
+  img.onerror = () => alert('Fotoğraf okunamadı');
+  img.src = URL.createObjectURL(file);
+}
+
+function removePhoto(){
+  photoDraft.changed = true; photoDraft.dataUrl = null;
+  $('#p-photo').value = '';
+  renderPhotoPreview();
 }
 
 async function delProduct(id){

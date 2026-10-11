@@ -40,6 +40,7 @@ type Product struct {
 	PrintHours   float64 `json:"printHours"` // baskı süresi (saat)
 	UsePackaging bool    `json:"usePackaging"`
 	UseSticker   bool    `json:"useSticker"`
+	PhotoVer     string  `json:"photoVer,omitempty"` // fotoğraf sürümü; boşsa fotoğraf yok
 	CreatedAt    string  `json:"createdAt"`
 }
 
@@ -241,6 +242,7 @@ func handleProducts(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, http.StatusBadRequest, "geçersiz veri")
 			return
 		}
+		p.PhotoVer = "" // fotoğraf ürün oluştuktan sonra ayrı yüklenir
 		if p.Name == "" {
 			writeErr(w, http.StatusBadRequest, "ürün adı zorunlu")
 			return
@@ -283,11 +285,15 @@ func handleProductByID(w http.ResponseWriter, r *http.Request) {
 		}
 		p.ID = id
 		p.CreatedAt = store.data.Products[idx].CreatedAt
+		p.PhotoVer = store.data.Products[idx].PhotoVer // fotoğraf ayrı uç noktadan yönetilir
 		store.data.Products[idx] = p
 		store.save()
 		writeJSON(w, http.StatusOK, p)
 
 	case http.MethodDelete:
+		if store.data.Products[idx].PhotoVer != "" {
+			photoDel(id)
+		}
 		store.data.Products = append(store.data.Products[:idx], store.data.Products[idx+1:]...)
 		store.save()
 		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
@@ -536,6 +542,7 @@ func Mux() http.Handler {
 	// Korunan uç noktalar (oturum gerekli)
 	mux.HandleFunc("/api/products", requireAuth(handleProducts))
 	mux.HandleFunc("/api/products/{id}", requireAuth(handleProductByID))
+	mux.HandleFunc("/api/products/{id}/photo", requireAuth(handleProductPhoto))
 	mux.HandleFunc("/api/filaments", requireAuth(handleFilaments))
 	mux.HandleFunc("/api/filaments/{id}", requireAuth(handleFilamentByID))
 	mux.HandleFunc("/api/settings", requireAuth(handleSettings))
