@@ -27,12 +27,14 @@ const (
 // ---------- Veri modelleri ----------
 
 type Product struct {
-	ID          string  `json:"id"`
-	Name        string  `json:"name"`
-	Price       float64 `json:"price"` // satış fiyatı (elle girilir)
-	Stock       int     `json:"stock"`
-	Material    string  `json:"material"` // eski alan; geriye dönük uyumluluk
-	Description string  `json:"description"`
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Price float64 `json:"price"` // eski tek fiyat alanı; boş kanal fiyatlarında Elden olarak kullanılır
+	// Prices, satış kanalına göre fiyatlar (anahtar: elden, dolap, shopier).
+	Prices      map[string]float64 `json:"prices"`
+	Stock       int                `json:"stock"`
+	Material    string             `json:"material"` // eski alan; geriye dönük uyumluluk
+	Description string             `json:"description"`
 	// Maliyet için malzeme seçimleri. Maliyet, güncel filament fiyatı ve
 	// ayarlardan dinamik hesaplanır; burada seçimler saklanır.
 	FilamentID   string  `json:"filamentId"`
@@ -71,6 +73,7 @@ type Order struct {
 	Customer  string      `json:"customer"`
 	Phone     string      `json:"phone"`
 	Address   string      `json:"address"`
+	Channel   string      `json:"channel"` // satış kanalı: elden, dolap, shopier
 	Items     []OrderItem `json:"items"`
 	Total     float64     `json:"total"`
 	Status    string      `json:"status"` // yeni, baskida, kargoda, teslim, iptal
@@ -406,6 +409,9 @@ func handleSettings(w http.ResponseWriter, r *http.Request) {
 
 // ---------- Sipariş handler'ları ----------
 
+// validChannels, sipariş ve ürün fiyatlarında kullanılan satış kanallarıdır.
+var validChannels = map[string]bool{"elden": true, "dolap": true, "shopier": true}
+
 var validStatus = map[string]bool{
 	"yeni": true, "baskida": true, "kargoda": true, "teslim": true, "iptal": true,
 }
@@ -429,6 +435,10 @@ func handleOrders(w http.ResponseWriter, r *http.Request) {
 		}
 		if o.Customer == "" {
 			writeErr(w, http.StatusBadRequest, "müşteri adı zorunlu")
+			return
+		}
+		if !validChannels[o.Channel] {
+			writeErr(w, http.StatusBadRequest, "geçerli bir sipariş kanalı seçin")
 			return
 		}
 		if len(o.Items) == 0 {

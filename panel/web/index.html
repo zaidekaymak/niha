@@ -244,8 +244,16 @@
       </div>
       <div class="costbox" id="p-costbox"></div>
       <div class="two">
-        <div class="field"><label>Satış Fiyatı (₺)</label><input id="p-price" type="number" min="0" step="0.01" placeholder="0"></div>
-        <div class="field"><label>Kâr</label><div id="p-profit" style="padding:10px 0"></div></div>
+        <div class="field"><label>Elden Satış Fiyatı (₺)</label><input id="p-price-elden" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Kâr</label><div id="p-profit-elden" style="padding:10px 0"></div></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Dolap Satış Fiyatı (₺)</label><input id="p-price-dolap" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Kâr</label><div id="p-profit-dolap" style="padding:10px 0"></div></div>
+      </div>
+      <div class="two">
+        <div class="field"><label>Shopier Satış Fiyatı (₺)</label><input id="p-price-shopier" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Kâr</label><div id="p-profit-shopier" style="padding:10px 0"></div></div>
       </div>
       <div class="field"><label>Açıklama</label><textarea id="p-desc" rows="2" placeholder="Opsiyonel"></textarea></div>
     </div>
@@ -298,6 +306,7 @@
         <div class="field"><label>Telefon</label><input id="o-phone" placeholder="Opsiyonel"></div>
       </div>
       <div class="field"><label>Adres</label><textarea id="o-address" rows="2" placeholder="Teslimat adresi"></textarea></div>
+      <div class="field"><label>Sipariş Kanalı</label><select id="o-channel" onchange="changeChannel()"></select></div>
       <label>Ürün Ekle</label>
       <div class="lineadd">
         <select id="o-product"></select>
@@ -338,6 +347,20 @@ const api = async (url, opt) => {
 const fmt = n => new Intl.NumberFormat('tr-TR',{style:'currency',currency:'TRY'}).format(n||0);
 const STATUS = {yeni:'Yeni', baskida:'Baskıda', kargoda:'Kargoda', teslim:'Teslim', iptal:'İptal'};
 const FLOW = ['yeni','baskida','kargoda','teslim'];
+const CHANNELS = {elden:'Elden', dolap:'Dolap', shopier:'Shopier'};
+
+// Ürünün kanal fiyatı; kanal fiyatı yoksa eski tek fiyat Elden sayılır.
+function priceOf(p, ch){
+  const v = p.prices?.[ch];
+  if(v != null) return v;
+  return ch==='elden' ? (p.price||0) : 0;
+}
+
+function profitHtml(price, cost){
+  if(!(price>0)) return '<span class="sub">—</span>';
+  const profit = price - cost;
+  return `<span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)} <small>(%${Math.round(profit/price*100)})</small></span>`;
+}
 
 let products = [], orders = [], filaments = [], settings = {}, users = [], draftItems = [];
 let isAdmin = false;
@@ -390,18 +413,18 @@ function renderProducts(){
     const f = filaments.find(x => x.id===p.filamentId);
     const meta = [f?esc(f.name):null, p.grams?p.grams+'g':null, p.printHours?p.printHours+'sa':null]
       .filter(Boolean).join(' · ') || esc(p.material||'');
-    const profit = (p.price||0) - c.total;
-    const pct = p.price>0 ? ` <small>(%${Math.round(profit/p.price*100)})</small>` : '';
+    const prices = Object.keys(CHANNELS).map(ch =>
+      `${CHANNELS[ch]} <b>${fmt(priceOf(p,ch))}</b> · Kâr ${profitHtml(priceOf(p,ch), c.total)}`).join('<br>');
     return `
     <div class="row">
       ${p.photoVer ? `<img class="thumb" src="${photoURL(p)}" alt="" loading="lazy">` : '<div class="thumb">▢</div>'}
       <div class="grow">
         <div class="title">${esc(p.name)}</div>
         <div class="sub">${meta}${p.description?(meta?' · ':'')+esc(p.description):''}</div>
-        <div class="sub">Maliyet ${fmt(c.total)} · Kâr <span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)}${pct}</span></div>
+        <div class="sub">Maliyet ${fmt(c.total)}</div>
+        <div class="sub">${prices}</div>
       </div>
       <span class="badge">Stok ${p.stock}</span>
-      <span class="price">${fmt(p.price)}</span>
       <button class="btn ghost sm" onclick='openProductModal(${JSON.stringify(p)})'>Düzenle</button>
       <button class="btn danger sm" onclick="delProduct('${p.id}')">Sil</button>
     </div>`;
@@ -422,7 +445,9 @@ function openProductModal(p){
   $('#p-hours').value = p?.printHours ?? '';
   $('#p-packaging').checked = !!p?.usePackaging;
   $('#p-sticker').checked = !!p?.useSticker;
-  $('#p-price').value = p?.price ?? '';
+  Object.keys(CHANNELS).forEach(ch => {
+    $('#p-price-'+ch).value = p ? (priceOf(p,ch) || '') : '';
+  });
   $('#p-desc').value = p?.description || '';
   photoDraft = { changed:false, dataUrl:null, current: p?.photoVer ? photoURL(p) : null };
   $('#p-photo').value = '';
@@ -451,18 +476,16 @@ function updateCostBox(){
     <div class="kv"><span class="k">Ambalaj</span><span class="v">${fmt(c.packaging)}</span></div>
     <div class="kv"><span class="k">Sticker</span><span class="v">${fmt(c.sticker)}</span></div>
     <div class="kv tot"><span class="k">Toplam Maliyet</span><span class="v">${fmt(c.total)}</span></div>`;
-  const price = parseFloat($('#p-price').value)||0;
-  const profit = price - c.total;
-  const pct = price>0 ? Math.round(profit/price*100) : 0;
-  $('#p-profit').innerHTML = price>0
-    ? `<span class="profit ${profit>=0?'pos':'neg'}">${fmt(profit)} <small>(%${pct})</small></span>`
-    : '<span class="sub">—</span>';
+  Object.keys(CHANNELS).forEach(ch => {
+    $('#p-profit-'+ch).innerHTML = profitHtml(parseFloat($('#p-price-'+ch).value)||0, c.total);
+  });
 }
 
 async function saveProduct(){
   const body = {
     name: $('#p-name').value.trim(),
-    price: parseFloat($('#p-price').value)||0,
+    prices: Object.fromEntries(Object.keys(CHANNELS).map(ch =>
+      [ch, parseFloat($('#p-price-'+ch).value)||0])),
     stock: parseInt($('#p-stock').value)||0,
     description: $('#p-desc').value.trim(),
     ...productForm(),
@@ -519,7 +542,7 @@ async function delProduct(id){
 }
 
 // Ürün modalındaki alanlar değişince maliyet/kâr canlı güncellensin.
-['p-filament','p-grams','p-hours','p-packaging','p-sticker','p-price'].forEach(id => {
+['p-filament','p-grams','p-hours','p-packaging','p-sticker','p-price-elden','p-price-dolap','p-price-shopier'].forEach(id => {
   const el = $('#'+id);
   el.addEventListener('input', updateCostBox);
   el.addEventListener('change', updateCostBox);
@@ -675,7 +698,7 @@ function renderOrders(){
     return `
     <div class="row" style="flex-wrap:wrap">
       <div class="grow">
-        <div class="title">${esc(o.customer)} <span class="badge">${o.id}</span></div>
+        <div class="title">${esc(o.customer)} <span class="badge">${o.id}</span>${o.channel?` <span class="badge">${CHANNELS[o.channel]||esc(o.channel)}</span>`:''}</div>
         <div class="sub">${itemsTxt}${o.phone?' · '+esc(o.phone):''}${o.note?' · '+esc(o.note):''}</div>
         ${o.address?`<div class="sub">📍 ${esc(o.address)}</div>`:''}
         ${pipe}
@@ -722,6 +745,7 @@ function renderDetail(){
   $('#d-body').innerHTML = `
     <div class="sec-title">Müşteri</div>
     <div class="kv"><span class="k">Ad Soyad</span><span class="v">${esc(o.customer)}</span></div>
+    ${o.channel?`<div class="kv"><span class="k">Kanal</span><span class="v">${CHANNELS[o.channel]||esc(o.channel)}</span></div>`:''}
     ${o.phone?`<div class="kv"><span class="k">Telefon</span><span class="v">${esc(o.phone)}</span></div>`:''}
     ${o.address?`<div class="kv"><span class="k">Adres</span><span class="v">${esc(o.address)}</span></div>`:''}
 
@@ -757,21 +781,42 @@ async function cancelFromDetail(){
 function openOrderModal(){
   $('#o-customer').value=''; $('#o-phone').value=''; $('#o-address').value=''; $('#o-note').value=''; $('#o-qty').value=1;
   draftItems = [];
-  $('#o-product').innerHTML = products.length
-    ? products.map(p => `<option value="${p.id}">${esc(p.name)} — ${fmt(p.price)}</option>`).join('')
-    : '<option value="">Önce ürün ekleyin</option>';
+  $('#o-channel').innerHTML = '<option value="">— Kanal seçin —</option>'
+    + Object.entries(CHANNELS).map(([k,v]) => `<option value="${k}">${v}</option>`).join('');
+  renderProductOptions();
   renderDraft();
   $('#order-modal').classList.add('show');
+}
+
+function renderProductOptions(){
+  const ch = $('#o-channel').value;
+  $('#o-product').innerHTML = products.length
+    ? products.map(p => `<option value="${p.id}">${esc(p.name)}${ch?' — '+fmt(priceOf(p,ch)):''}</option>`).join('')
+    : '<option value="">Önce ürün ekleyin</option>';
+}
+
+// Kanal değişince ürün listesi ve sepetteki fiyatlar o kanalın fiyatına güncellenir.
+function changeChannel(){
+  const ch = $('#o-channel').value, sel = $('#o-product').value;
+  renderProductOptions();
+  $('#o-product').value = sel;
+  draftItems.forEach(i => {
+    const p = products.find(x => x.id===i.productId);
+    if(p && ch) i.price = priceOf(p, ch);
+  });
+  renderDraft();
 }
 
 function addLine(){
   const pid = $('#o-product').value;
   const p = products.find(x => x.id===pid);
   if(!p){ alert('Ürün seçin'); return; }
+  const ch = $('#o-channel').value;
+  if(!ch){ alert('Önce sipariş kanalını seçin'); return; }
   const qty = parseInt($('#o-qty').value)||1;
   const ex = draftItems.find(x => x.productId===pid);
   if(ex) ex.qty += qty;
-  else draftItems.push({productId:p.id, name:p.name, price:p.price, qty});
+  else draftItems.push({productId:p.id, name:p.name, price:priceOf(p,ch), qty});
   renderDraft();
 }
 
@@ -790,12 +835,14 @@ function rmLine(i){ draftItems.splice(i,1); renderDraft(); }
 
 async function saveOrder(){
   // Kullanici "Ekle"ye basmadan dogrudan olusturduysa, secili urunu ekle.
+  if(!$('#o-channel').value){ alert('Sipariş kanalını seçin'); return; }
   if(!draftItems.length && $('#o-product').value) addLine();
   const body = {
     customer: $('#o-customer').value.trim(),
     phone: $('#o-phone').value.trim(),
     address: $('#o-address').value.trim(),
     note: $('#o-note').value.trim(),
+    channel: $('#o-channel').value,
     items: draftItems,
   };
   if(!body.customer){ alert('Müşteri adı zorunlu'); return; }
