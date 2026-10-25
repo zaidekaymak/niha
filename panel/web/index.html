@@ -101,6 +101,7 @@
   .costbox .kv.tot{border-top:2px solid var(--line);padding-top:8px;margin-top:4px;font-weight:600}
   .fil-row{display:grid;grid-template-columns:1fr 110px auto;gap:8px;align-items:center;margin-bottom:8px}
   .fil-row .x{cursor:pointer;color:#c23b3b;font-size:18px;line-height:1;padding:0 4px}
+  .cost{color:#c23b3b;font-weight:700}
   .profit.pos{color:#268a4f} .profit.neg{color:#c23b3b}
 
   /* Giriş ekranı */
@@ -454,7 +455,7 @@ function renderProducts(){
       <div class="grow">
         <div class="title">${esc(p.name)}</div>
         <div class="sub">${meta}${p.description?(meta?' · ':'')+esc(p.description):''}</div>
-        <div class="sub">Maliyet ${fmt(c.total)}</div>
+        <div class="sub">Maliyet <b class="cost">${fmt(c.total)}</b></div>
         <div class="sub">${prices}</div>
       </div>
       <span class="badge">Stok ${p.stock}</span>
