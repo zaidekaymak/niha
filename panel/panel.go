@@ -43,6 +43,7 @@ type Product struct {
 	PrintHours   float64           `json:"printHours"` // baskı süresi (saat)
 	UsePackaging bool              `json:"usePackaging"`
 	UseSticker   bool              `json:"useSticker"`
+	UseMagnet    bool              `json:"useMagnet"`
 	PhotoVer     string            `json:"photoVer,omitempty"` // fotoğraf sürümü; boşsa fotoğraf yok
 	CreatedAt    string            `json:"createdAt"`
 }
@@ -65,6 +66,7 @@ type Filament struct {
 type Settings struct {
 	PackagingCost float64 `json:"packagingCost"` // ambalaj birim maliyeti (₺)
 	StickerCost   float64 `json:"stickerCost"`   // sticker birim maliyeti (₺)
+	MagnetCost    float64 `json:"magnetCost"`    // ürün başına mıknatıs maliyeti (₺)
 	HourlyCost    float64 `json:"hourlyCost"`    // saatlik baskı maliyeti (₺)
 }
 

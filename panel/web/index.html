@@ -212,7 +212,10 @@
         <div class="field"><label>Ambalaj Maliyeti (₺)</label><input id="s-packaging" type="number" min="0" step="0.01" placeholder="0"></div>
         <div class="field"><label>Sticker Maliyeti (₺)</label><input id="s-sticker" type="number" min="0" step="0.01" placeholder="0"></div>
       </div>
-      <div class="field"><label>Saatlik Baskı Maliyeti (₺/saat)</label><input id="s-hourly" type="number" min="0" step="0.01" placeholder="0"></div>
+      <div class="two">
+        <div class="field"><label>Mıknatıs Maliyeti (₺)</label><input id="s-magnet" type="number" min="0" step="0.01" placeholder="0"></div>
+        <div class="field"><label>Saatlik Baskı Maliyeti (₺/saat)</label><input id="s-hourly" type="number" min="0" step="0.01" placeholder="0"></div>
+      </div>
       <div style="text-align:right"><button class="btn" onclick="saveSettings()">Kaydet</button></div>
     </div>
   </section>
@@ -246,6 +249,7 @@
       <div class="checkrow">
         <label><input type="checkbox" id="p-packaging"> Ambalaj</label>
         <label><input type="checkbox" id="p-sticker"> Sticker</label>
+        <label><input type="checkbox" id="p-magnet"> Mıknatıs</label>
       </div>
       <div class="costbox" id="p-costbox"></div>
       <div class="two">
@@ -414,7 +418,8 @@ function calcCost(p){
   const printCost = (p.printHours||0)*(settings.hourlyCost||0);
   const packaging = p.usePackaging ? (settings.packagingCost||0) : 0;
   const sticker = p.useSticker ? (settings.stickerCost||0) : 0;
-  return {filamentCost, printCost, packaging, sticker, total: filamentCost+printCost+packaging+sticker};
+  const magnet = p.useMagnet ? (settings.magnetCost||0) : 0;
+  return {filamentCost, printCost, packaging, sticker, magnet, total: filamentCost+printCost+packaging+sticker+magnet};
 }
 
 function renderStats(s){
@@ -470,6 +475,7 @@ function openProductModal(p){
   $('#p-hours').value = p?.printHours ?? '';
   $('#p-packaging').checked = !!p?.usePackaging;
   $('#p-sticker').checked = !!p?.useSticker;
+  $('#p-magnet').checked = !!p?.useMagnet;
   Object.keys(CHANNELS).forEach(ch => {
     $('#p-price-'+ch).value = p ? (priceOf(p,ch) || '') : '';
   });
@@ -491,6 +497,7 @@ function productForm(){
     printHours: parseFloat($('#p-hours').value)||0,
     usePackaging: $('#p-packaging').checked,
     useSticker: $('#p-sticker').checked,
+    useMagnet: $('#p-magnet').checked,
   };
 }
 
@@ -505,6 +512,7 @@ function updateCostBox(){
     <div class="kv"><span class="k">Baskı (${p.printHours||0} sa)</span><span class="v">${fmt(c.printCost)}</span></div>
     <div class="kv"><span class="k">Ambalaj</span><span class="v">${fmt(c.packaging)}</span></div>
     <div class="kv"><span class="k">Sticker</span><span class="v">${fmt(c.sticker)}</span></div>
+    <div class="kv"><span class="k">Mıknatıs</span><span class="v">${fmt(c.magnet)}</span></div>
     <div class="kv tot"><span class="k">Toplam Maliyet</span><span class="v">${fmt(c.total)}</span></div>`;
   Object.keys(CHANNELS).forEach(ch => {
     $('#p-profit-'+ch).innerHTML = profitHtml(parseFloat($('#p-price-'+ch).value)||0, c.total);
@@ -572,7 +580,7 @@ async function delProduct(id){
 }
 
 // Ürün modalındaki alanlar değişince maliyet/kâr canlı güncellensin.
-['p-filaments','p-hours','p-packaging','p-sticker','p-price-elden','p-price-dolap','p-price-shopier'].forEach(id => {
+['p-filaments','p-hours','p-packaging','p-sticker','p-magnet','p-price-elden','p-price-dolap','p-price-shopier'].forEach(id => {
   const el = $('#'+id);
   el.addEventListener('input', updateCostBox);
   el.addEventListener('change', updateCostBox);
@@ -637,6 +645,7 @@ async function delFilament(id){
 function renderSettings(){
   $('#s-packaging').value = settings.packagingCost ?? '';
   $('#s-sticker').value = settings.stickerCost ?? '';
+  $('#s-magnet').value = settings.magnetCost ?? '';
   $('#s-hourly').value = settings.hourlyCost ?? '';
 }
 
@@ -644,6 +653,7 @@ async function saveSettings(){
   const body = {
     packagingCost: parseFloat($('#s-packaging').value)||0,
     stickerCost: parseFloat($('#s-sticker').value)||0,
+    magnetCost: parseFloat($('#s-magnet').value)||0,
     hourlyCost: parseFloat($('#s-hourly').value)||0,
   };
   try{
