@@ -37,13 +37,20 @@ type Product struct {
 	Description string             `json:"description"`
 	// Maliyet için malzeme seçimleri. Maliyet, güncel filament fiyatı ve
 	// ayarlardan dinamik hesaplanır; burada seçimler saklanır.
-	FilamentID   string  `json:"filamentId"`
-	Grams        float64 `json:"grams"`      // kullanılan filament (gram)
-	PrintHours   float64 `json:"printHours"` // baskı süresi (saat)
-	UsePackaging bool    `json:"usePackaging"`
-	UseSticker   bool    `json:"useSticker"`
-	PhotoVer     string  `json:"photoVer,omitempty"` // fotoğraf sürümü; boşsa fotoğraf yok
-	CreatedAt    string  `json:"createdAt"`
+	Filaments    []ProductFilament `json:"filaments"`  // kullanılan filamentler ve gramajları
+	FilamentID   string            `json:"filamentId"` // eski tek filament alanı; Filaments boşsa kullanılır
+	Grams        float64           `json:"grams"`      // eski tek filament gramajı
+	PrintHours   float64           `json:"printHours"` // baskı süresi (saat)
+	UsePackaging bool              `json:"usePackaging"`
+	UseSticker   bool              `json:"useSticker"`
+	PhotoVer     string            `json:"photoVer,omitempty"` // fotoğraf sürümü; boşsa fotoğraf yok
+	CreatedAt    string            `json:"createdAt"`
+}
+
+// ProductFilament, üründe kullanılan bir filament ve gramajı.
+type ProductFilament struct {
+	FilamentID string  `json:"filamentId"`
+	Grams      float64 `json:"grams"`
 }
 
 // Filament, üründe seçilebilen filament türü ve kg fiyatı.

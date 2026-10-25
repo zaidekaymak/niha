@@ -99,6 +99,8 @@
   .costbox{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:16px}
   .costbox .kv{padding:5px 0;border:0}
   .costbox .kv.tot{border-top:2px solid var(--line);padding-top:8px;margin-top:4px;font-weight:600}
+  .fil-row{display:grid;grid-template-columns:1fr 110px auto;gap:8px;align-items:center;margin-bottom:8px}
+  .fil-row .x{cursor:pointer;color:#c23b3b;font-size:18px;line-height:1;padding:0 4px}
   .profit.pos{color:#268a4f} .profit.neg{color:#c23b3b}
 
   /* Giriş ekranı */
@@ -233,9 +235,9 @@
           </div>
         </div>
       </div>
-      <div class="two">
-        <div class="field"><label>Filament</label><select id="p-filament"></select></div>
-        <div class="field"><label>Kullanılan (gram)</label><input id="p-grams" type="number" min="0" step="0.1" placeholder="0"></div>
+      <div class="field"><label>Filamentler (gram)</label>
+        <div id="p-filaments"></div>
+        <button class="btn ghost sm" type="button" onclick="addFilamentRow()">+ Filament Ekle</button>
       </div>
       <div class="two">
         <div class="field"><label>Baskı Süresi (saat)</label><input id="p-hours" type="number" min="0" step="0.1" placeholder="0"></div>
@@ -396,9 +398,19 @@ async function refresh(){
 }
 
 /* ---------- Maliyet hesabı ---------- */
+// Ürünün filament listesi; eski tek filament kayıtları tek satırlı listeye çevrilir.
+function productFilaments(p){
+  if(p.filaments?.length) return p.filaments;
+  return p.filamentId ? [{filamentId:p.filamentId, grams:p.grams||0}] : [];
+}
+
+const filamentLineCost = l => {
+  const f = filaments.find(x => x.id===l.filamentId);
+  return f ? (l.grams||0)/1000*f.pricePerKg : 0;
+};
+
 function calcCost(p){
-  const f = filaments.find(x => x.id===p.filamentId);
-  const filamentCost = f ? (p.grams||0)/1000*f.pricePerKg : 0;
+  const filamentCost = productFilaments(p).reduce((sum, l) => sum + filamentLineCost(l), 0);
   const printCost = (p.printHours||0)*(settings.hourlyCost||0);
   const packaging = p.usePackaging ? (settings.packagingCost||0) : 0;
   const sticker = p.useSticker ? (settings.stickerCost||0) : 0;
@@ -419,12 +431,15 @@ function renderProducts(){
   if(!products.length){ el.innerHTML = '<div class="empty">Henüz ürün yok. İlk ürününü ekle.</div>'; return; }
   const q = $('#products-search').value;
   const list = products.filter(p => matches(q, p.id, p.name, p.description,
-    filaments.find(x => x.id===p.filamentId)?.name));
+    ...productFilaments(p).map(l => filaments.find(x => x.id===l.filamentId)?.name)));
   if(!list.length){ el.innerHTML = '<div class="empty">Aramayla eşleşen ürün yok.</div>'; return; }
   el.innerHTML = list.map(p => {
     const c = calcCost(p);
-    const f = filaments.find(x => x.id===p.filamentId);
-    const meta = [f?esc(f.name):null, p.grams?p.grams+'g':null, p.printHours?p.printHours+'sa':null]
+    const fils = productFilaments(p).map(l => {
+      const f = filaments.find(x => x.id===l.filamentId);
+      return [f?esc(f.name):null, l.grams?l.grams+'g':null].filter(Boolean).join(' ');
+    }).filter(Boolean).join(' + ');
+    const meta = [fils||null, p.printHours?p.printHours+'sa':null]
       .filter(Boolean).join(' · ') || esc(p.material||'');
     const prices = Object.keys(CHANNELS).map(ch =>
       `${CHANNELS[ch]} <b>${fmt(priceOf(p,ch))}</b> · Kâr ${profitHtml(priceOf(p,ch), c.total)}`).join('<br>');
@@ -448,12 +463,9 @@ function openProductModal(p){
   $('#pm-title').textContent = p ? 'Ürünü Düzenle' : 'Yeni Ürün';
   $('#p-id').value = p?.id || '';
   $('#p-name').value = p?.name || '';
-  $('#p-filament').innerHTML = filaments.length
-    ? '<option value="">— Filament yok —</option>' + filaments.map(f =>
-        `<option value="${f.id}">${esc(f.name)} — ${fmt(f.pricePerKg)}/kg</option>`).join('')
-    : '<option value="">Önce filament ekleyin</option>';
-  $('#p-filament').value = p?.filamentId || '';
-  $('#p-grams').value = p?.grams ?? '';
+  $('#p-filaments').innerHTML = '';
+  const fils = p ? productFilaments(p) : [];
+  (fils.length ? fils : [{}]).forEach(addFilamentRow);
   $('#p-stock').value = p?.stock ?? '';
   $('#p-hours').value = p?.printHours ?? '';
   $('#p-packaging').checked = !!p?.usePackaging;
@@ -471,8 +483,11 @@ function openProductModal(p){
 
 function productForm(){
   return {
-    filamentId: $('#p-filament').value,
-    grams: parseFloat($('#p-grams').value)||0,
+    filaments: [...document.querySelectorAll('#p-filaments .fil-row')].map(r => ({
+      filamentId: r.querySelector('select').value,
+      grams: parseFloat(r.querySelector('input').value)||0,
+    })).filter(l => l.filamentId),
+    filamentId: '', grams: 0, // eski tek filament alanları artık listeye taşındı
     printHours: parseFloat($('#p-hours').value)||0,
     usePackaging: $('#p-packaging').checked,
     useSticker: $('#p-sticker').checked,
@@ -482,9 +497,11 @@ function productForm(){
 function updateCostBox(){
   const p = productForm();
   const c = calcCost(p);
-  const f = filaments.find(x => x.id===p.filamentId);
-  $('#p-costbox').innerHTML = `
-    <div class="kv"><span class="k">Filament${f?' ('+esc(f.name)+')':''}</span><span class="v">${fmt(c.filamentCost)}</span></div>
+  const filRows = p.filaments.length ? p.filaments.map(l => {
+    const f = filaments.find(x => x.id===l.filamentId);
+    return `<div class="kv"><span class="k">Filament (${esc(f?.name||'?')}, ${l.grams}g)</span><span class="v">${fmt(filamentLineCost(l))}</span></div>`;
+  }).join('') : `<div class="kv"><span class="k">Filament</span><span class="v">${fmt(0)}</span></div>`;
+  $('#p-costbox').innerHTML = filRows + `
     <div class="kv"><span class="k">Baskı (${p.printHours||0} sa)</span><span class="v">${fmt(c.printCost)}</span></div>
     <div class="kv"><span class="k">Ambalaj</span><span class="v">${fmt(c.packaging)}</span></div>
     <div class="kv"><span class="k">Sticker</span><span class="v">${fmt(c.sticker)}</span></div>
@@ -555,11 +572,29 @@ async function delProduct(id){
 }
 
 // Ürün modalındaki alanlar değişince maliyet/kâr canlı güncellensin.
-['p-filament','p-grams','p-hours','p-packaging','p-sticker','p-price-elden','p-price-dolap','p-price-shopier'].forEach(id => {
+['p-filaments','p-hours','p-packaging','p-sticker','p-price-elden','p-price-dolap','p-price-shopier'].forEach(id => {
   const el = $('#'+id);
   el.addEventListener('input', updateCostBox);
   el.addEventListener('change', updateCostBox);
 });
+
+// Ürün modalına bir filament satırı (seçim + gram) ekler.
+function addFilamentRow(l){
+  const row = document.createElement('div');
+  row.className = 'fil-row';
+  row.innerHTML = `
+    <select>${filaments.length
+      ? '<option value="">— Filament seç —</option>' + filaments.map(f =>
+          `<option value="${f.id}">${esc(f.name)} — ${fmt(f.pricePerKg)}/kg</option>`).join('')
+      : '<option value="">Önce filament ekleyin</option>'}</select>
+    <input type="number" min="0" step="0.1" placeholder="gram">
+    <span class="x" title="Kaldır">×</span>`;
+  row.querySelector('select').value = l?.filamentId || '';
+  row.querySelector('input').value = l?.grams || '';
+  row.querySelector('.x').onclick = () => { row.remove(); updateCostBox(); };
+  $('#p-filaments').appendChild(row);
+  updateCostBox();
+}
 
 /* ---------- Filamentler ---------- */
 function renderFilaments(){
